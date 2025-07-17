@@ -1,0 +1,59 @@
+----FKS---
+select * from  z_FKCREATEDROP_06_25_2025 where ADD_FK_Script not in (select ADD_FK_Script from  (
+SELECT
+        sch.name AS SchemaName,
+        parent.name AS TableName,
+        fk.name AS ForeignKeyName,
+    'IF EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = ''' + fk.name + ''' AND parent_object_id = OBJECT_ID(''' + sch.name + '.' + parent.name + '''))' + CHAR(13) +
+    'BEGIN' + CHAR(13) +
+    '    ALTER TABLE [' + sch.name + '].[' + parent.name + '] DROP CONSTRAINT [' + fk.name + '];' + CHAR(13) +
+    'END;' + CHAR(13) + CHAR(13) AS DROP_FK_Script ,
+ 
+    'IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = ''' + fk.name + ''' AND parent_object_id = OBJECT_ID(''' + sch.name + '.' + parent.name + '''))' + CHAR(13) +
+    'BEGIN' + CHAR(13) +
+    '    ALTER TABLE [' + sch.name + '].[' + parent.name + '] WITH CHECK ADD CONSTRAINT [' + fk.name + '] FOREIGN KEY (' + 
+    STUFF((
+        SELECT '], [' + col.name
+        FROM sys.foreign_key_columns fkc
+        INNER JOIN sys.columns col ON fkc.parent_object_id = col.object_id AND fkc.parent_column_id = col.column_id
+        WHERE fkc.constraint_object_id = fk.object_id
+        ORDER BY fkc.constraint_column_id
+        FOR XML PATH(''), TYPE).value('.', 'NVARCHAR(MAX)'), 1, 3, '') + 
+    ']) REFERENCES [' + ref_sch.name + '].[' + referenced.name + '] (' +
+    STUFF((
+        SELECT '], [' + col.name
+        FROM sys.foreign_key_columns fkc
+        INNER JOIN sys.columns col ON fkc.referenced_object_id = col.object_id AND fkc.referenced_column_id = col.column_id
+        WHERE fkc.constraint_object_id = fk.object_id
+        ORDER BY fkc.constraint_column_id
+        FOR XML PATH(''), TYPE).value('.', 'NVARCHAR(MAX)'), 1, 3, '') + 
+    '])' +
+    CASE 
+        WHEN fk.delete_referential_action = 1 THEN ' ON DELETE CASCADE'
+        WHEN fk.delete_referential_action = 2 THEN ' ON DELETE SET NULL'
+        WHEN fk.delete_referential_action = 3 THEN ' ON DELETE SET DEFAULT'
+        ELSE ''
+    END +
+    CASE 
+        WHEN fk.update_referential_action = 1 THEN ' ON UPDATE CASCADE'
+        WHEN fk.update_referential_action = 2 THEN ' ON UPDATE SET NULL'
+        WHEN fk.update_referential_action = 3 THEN ' ON UPDATE SET DEFAULT'
+        ELSE ''
+    END + ';' + CHAR(13) +
+    'END;' + CHAR(13) + CHAR(13) AS ADD_FK_Script
+
+	--into z_FKCREATEDROP_06_02_2025
+
+FROM sys.foreign_keys fk
+
+INNER JOIN sys.tables parent ON fk.parent_object_id = parent.object_id
+INNER JOIN sys.schemas sch ON parent.schema_id = sch.schema_id
+INNER JOIN sys.tables referenced ON fk.referenced_object_id = referenced.object_id
+INNER JOIN sys.schemas ref_sch ON referenced.schema_id = ref_sch.schema_id
+ WHERE fk.is_disabled = 0
+  --  ORDER BY sch.name, parent.name, fk.name
+
+
+) as a)
+
+'
